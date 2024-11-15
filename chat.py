@@ -2,11 +2,10 @@ import os
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from langchain_core.tools import tool
 from dotenv import load_dotenv
+from langchain.memory import ConversationBufferMemory
 import requests
-
+ 
 load_dotenv()
-print("NVIDIA API Key:", os.getenv("NVIDIA_API_KEY")) 
-print("Google Maps API Key:", os.getenv("GOOGLE_MAPS_API_KEY")) 
 
 @tool
 def get_directions(origin: str, destination: str) -> str:
@@ -40,6 +39,37 @@ def get_directions(origin: str, destination: str) -> str:
             return "No route found."
     else:
         return f"Error: {response.status_code} - {response.text}"
+    
+@tool
+def get_distance(origin: str, destination: str) -> str:
+    """
+    Retrieves the distance between the origin and destination
+    """
+    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    distance_url = "https://maps.googleapis.com/maps/api/distance/json"
+    params = {
+        "origin": origin,
+        "destination": destination,
+        "key": api_key
+    }
+    response = requests.get(distance_url, params=params)
+    if response.status_code == 200:
+        distance_data = response.json()
+        rows = distance_data.get("rows", [])
+        if rows and "elements" in rows[0]:
+            output = []
+            element = rows[0]["elements"][0]
+            if "distance" and "duration" in element:
+                distance = (element["distance"]["text"])
+                duration = (element["duration"]["text"])
+                return f"The distance from {origin} to {destination} is {distance}, and it will take approximately {duration}."
+
+        else:
+            return "No route found."
+    else:
+        return f"Error: {response.status_code} - {response.text}"
+
+
 
 
 llm = ChatNVIDIA(
@@ -50,7 +80,8 @@ llm = ChatNVIDIA(
     max_tokens=1024,
 )
 
-llm.bind_tools(tools=[get_directions])
+llm.bind_tools(tools=[get_directions, get_distance])
 
-response = llm.invoke("Can you give me directions from Central Park to Battery Park")
+response = llm.invoke("How do I get from San Jose University to Santa Clara University")
+memory = ConversationBufferMemory() 
 print(response.content)
